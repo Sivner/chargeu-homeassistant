@@ -1,0 +1,139 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "CHARGEU charging station",
+        "description": "Enter the address of the charger's web interface. Home Assistant must be able to reach it directly.",
+        "data": {
+          "host": "Host or IP address"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the charger at that address.",
+      "not_chargeu": "That address answered, but it does not look like a CHARGEU station."
+    },
+    "abort": {
+      "already_configured": "This charger is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "CHARGEU options",
+        "description": "How often to poll the charger. The device is an older embedded web server; very short intervals may overload it.",
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "state": {
+        "name": "Status"
+      },
+      "current": {
+        "name": "Charging current"
+      },
+      "max_current": {
+        "name": "Maximum current"
+      },
+      "voltage": {
+        "name": "Voltage"
+      },
+      "power": {
+        "name": "Power"
+      },
+      "session_energy": {
+        "name": "Session energy"
+      },
+      "session_duration": {
+        "name": "Session duration"
+      },
+      "timer_countdown": {
+        "name": "Timer countdown"
+      },
+      "timer_target": {
+        "name": "Timer action",
+        "state": {
+          "unlock": "Will unlock",
+          "lock": "Will lock",
+          "none": "No timer"
+        }
+      },
+      "meter": {
+        "name": "Energy meter"
+      },
+      "total_energy": {
+        "name": "Total energy delivered"
+      }
+    },
+    "binary_sensor": {
+      "charging": {
+        "name": "Charging"
+      },
+      "locked": {
+        "name": "Locked"
+      },
+      "ground_check": {
+        "name": "Ground check"
+      },
+      "rcd": {
+        "name": "Shock protection"
+      }
+    },
+    "switch": {
+      "available": {
+        "name": "Station available"
+      },
+      "single_session": {
+        "name": "One-shot session"
+      },
+      "ground_check": {
+        "name": "Ground check"
+      },
+      "led": {
+        "name": "Light indication"
+      }
+    },
+    "number": {
+      "max_current": {
+        "name": "Maximum charging current"
+      }
+    },
+    "button": {
+      "sync_clock": {
+        "name": "Sync clock"
+      }
+    }
+  },
+  "services": {
+    "set_timer": {
+      "name": "Set timer",
+      "description": "Configure the charger's built-in timer. Note: changing the timer resets the current session counters.",
+      "fields": {
+        "begin": {
+          "name": "Unlock time",
+          "description": "When the station unlocks, HH:MM."
+        },
+        "end": {
+          "name": "Lock time",
+          "description": "When the station locks again, HH:MM."
+        },
+        "amps": {
+          "name": "Current",
+          "description": "Charging current for the timer window, 6-32 A."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the timer is active."
+        }
+      }
+    },
+    "reset_energy_meter": {
+      "name": "Reset energy meter",
+      "description": "DESTRUCTIVE: resets the charger's lifetime energy meter. This cannot be undone."
+    }
+  }
+}

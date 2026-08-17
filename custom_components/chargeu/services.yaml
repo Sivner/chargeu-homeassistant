@@ -1,0 +1,28 @@
+set_timer:
+  fields:
+    begin:
+      required: true
+      example: "08:45"
+      selector:
+        text:
+    end:
+      required: true
+      example: "17:30"
+      selector:
+        text:
+    amps:
+      required: true
+      example: 10
+      selector:
+        number:
+          min: 6
+          max: 32
+          step: 1
+          unit_of_measurement: A
+    enabled:
+      required: true
+      example: true
+      selector:
+        boolean:
+
+reset_energy_meter:

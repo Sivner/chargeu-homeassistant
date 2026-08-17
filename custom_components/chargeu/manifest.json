@@ -1,0 +1,14 @@
+{
+  "domain": "chargeu",
+  "name": "CHARGEU EV Charger",
+  "codeowners": [
+    "@Sivner"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/Sivner/chargeu-homeassistant",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Sivner/chargeu-homeassistant/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

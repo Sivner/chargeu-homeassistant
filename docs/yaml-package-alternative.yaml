@@ -1,0 +1,306 @@
+# =============================================================================
+#  CHARGEU base 32A  ->  Home Assistant (package)   v2
+# =============================================================================
+#  У устройства НЕТ API: только HTML, значения в шаблоне
+#  <div class=out>МЕТКА<div class=ins>ЗНАЧЕНИЕ</div></div>, страница сама
+#  перезагружается раз в 4 с. Телеметрию читаем regex-ом ПО МЕТКАМ (RU/EN/UA,
+#  чтобы не сломалось при смене языка станции); числа — как есть; факт заряда —
+#  по "ток заряда > 0.1 А" (не зависит от языка). Управление — POST-формы,
+#  тело кодируется как в браузере ('$'->%24, пробел->'+').
+#
+#  ИМЕНА СУЩНОСТЕЙ — латиницей, чтобы entity_id были предсказуемыми
+#  (HA формирует entity_id из name). Отображаемые подписи меняйте в UI.
+#
+#  УСТАНОВКА
+#   1) один раз в configuration.yaml:
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   2) положить файл в  <config>/packages/chargeu.yaml
+#   3) проверить IP (по умолчанию 192.168.4.1) в секциях rest: и rest_command:
+#   4) перезапустить Home Assistant
+#
+#  ВАЖНО ПО УПРАВЛЕНИЮ (проверено на живом устройстве):
+#   - разблокировка ($AVAIL 0) и разовая сессия ($TEMPS 1) при подключённом авто
+#     СРАЗУ начинают реальный заряд;
+#   - переключение таймера обнуляет счётчик ТЕКУЩЕЙ сессии (пожизненный — нет).
+# =============================================================================
+
+
+# --------------------------------------------------------------------------- #
+#  ДАТЧИКИ.  Один GET "/" кормит все сенсоры сразу.
+# --------------------------------------------------------------------------- #
+rest:
+  - resource: "http://192.168.4.1/"
+    scan_interval: 15
+    timeout: 10
+    sensor:
+      - name: "CHARGEU state"                 # sensor.chargeu_state
+        unique_id: chargeu_state
+        value_template: >
+          {% set m = value | regex_findall('(?:Текущее состояние|Current status|Поточний стан)<div[^>]*>(?:\s*<br>\s*)?([^<]+)') %}
+          {{ (m[0] | trim) if m else 'unknown' }}
+
+      - name: "CHARGEU max current"           # sensor.chargeu_max_current
+        unique_id: chargeu_max_current
+        unit_of_measurement: "A"
+        device_class: current
+        value_template: >
+          {% set m = value | regex_findall('(?:Максимальный ток заряда|Maximum charge current|Максимальний зарядний струм)<div[^>]*>([\d.]+)') %}
+          {{ m[0] if m else none }}
+
+      - name: "CHARGEU current"               # sensor.chargeu_current
+        unique_id: chargeu_current
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        value_template: >
+          {% set m = value | regex_findall('(?:Текущий ток заряда|Current charge current|Поточний зарядний струм)<div[^>]*>([\d.]+)') %}
+          {{ m[0] if m else none }}
+
+      - name: "CHARGEU voltage"               # sensor.chargeu_voltage
+        unique_id: chargeu_voltage
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        value_template: >
+          {% set m = value | regex_findall('(?:Текущее напряжение|Current voltage|Поточна напруга)<div[^>]*>([\d.]+)') %}
+          {{ m[0] if m else none }}
+
+      - name: "CHARGEU session energy"        # sensor.chargeu_session_energy
+        unique_id: chargeu_session_energy
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        value_template: >
+          {% set m = value | regex_findall('(?:Переданная мощность в сессии|Transmitted power in session|Передана потужність в сесії)<div[^>]*>([\d.]+)') %}
+          {{ m[0] if m else none }}
+
+      - name: "CHARGEU session duration"      # sensor.chargeu_session_duration
+        unique_id: chargeu_session_duration
+        icon: mdi:timer-outline
+        value_template: >
+          {% set m = value | regex_findall('(?:Длительность сессии|Duration of session|Тривалість сесії)<div[^>]*>([\d:]+)') %}
+          {{ m[0] if m else 'unknown' }}
+
+      - name: "CHARGEU RCD"                    # sensor.chargeu_rcd (защита от удара током)
+        unique_id: chargeu_rcd
+        value_template: >
+          {% set m = value | regex_findall('(?:Защита от удара током|Protection against electric shock|Захист від ураження струмом)<div[^>]*>([^<]+)') %}
+          {{ (m[0] | trim) if m else 'unknown' }}
+
+      - name: "CHARGEU ground"                 # sensor.chargeu_ground (проверка заземления)
+        unique_id: chargeu_ground
+        value_template: >
+          {% set m = value | regex_findall('(?:Проверка заземления|Ground check|Перевірка заземлення)<div[^>]*>([^<]+)') %}
+          {{ (m[0] | trim) if m else 'unknown' }}
+
+      # Отсчёт таймера — в ОБЕ стороны:
+      #  до РАЗблокировки (станция ждёт открытия) ИЛИ до Блокировки (идёт заряд, окно закроется)
+      - name: "CHARGEU timer countdown"        # sensor.chargeu_timer_countdown
+        unique_id: chargeu_timer_countdown
+        icon: mdi:timer-lock-outline
+        value_template: >
+          {% set m = value | regex_findall('(?:(?:раз|за)блокирует станцию через|(?:un)?lock the station in|(?:роз|за)блокує станцію через)<div[^>]*>([\d:]+)') %}
+          {{ m[0] if m else '' }}
+
+      # Что произойдёт по окончании отсчёта: unlock / lock / none
+      - name: "CHARGEU timer target"           # sensor.chargeu_timer_target
+        unique_id: chargeu_timer_target
+        icon: mdi:timer-cog-outline
+        value_template: >
+          {% if 'разблокирует' in value or 'unlock the station' in value or 'розблокує' in value %}unlock
+          {%- elif 'заблокирует' in value or 'lock the station' in value or 'заблокує' in value %}lock
+          {%- else %}none{% endif %}
+
+  # ---- /setup: пожизненные счётчики (обновляются после окончания сессии) -- #
+  - resource: "http://192.168.4.1/setup"
+    scan_interval: 300
+    timeout: 10
+    sensor:
+      - name: "CHARGEU meter"                  # sensor.chargeu_meter (энергометр)
+        unique_id: chargeu_meter
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        value_template: >
+          {% set m = value | regex_findall('(?:Энергометр|Energy meter|Енергометр)[\s\S]*?([\d.]+)\s*(?:кВт|kW)') %}
+          {{ m[0] if m else none }}
+
+      - name: "CHARGEU total energy"           # sensor.chargeu_total_energy
+        unique_id: chargeu_total_energy
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+        value_template: >
+          {% set m = value | regex_findall('(?:Переданная мощность всего|Total transmitted power|Передана потужність всього)[\s\S]*?([\d.]+)\s*(?:кВт|kW)') %}
+          {{ m[0] if m else none }}
+
+
+# --------------------------------------------------------------------------- #
+#  ВЫЧИСЛЯЕМЫЕ СЕНСОРЫ (языконезависимые сигналы)
+# --------------------------------------------------------------------------- #
+template:
+  - sensor:
+      - name: "CHARGEU power"                  # sensor.chargeu_power = ток * напряжение
+        unique_id: chargeu_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set i = states('sensor.chargeu_current') | float(0) %}
+          {% set u = states('sensor.chargeu_voltage') | float(0) %}
+          {{ (i * u) | round(0) }}
+
+  - binary_sensor:
+      - name: "CHARGEU charging"               # binary_sensor.chargeu_charging
+        unique_id: chargeu_charging
+        device_class: battery_charging
+        state: "{{ states('sensor.chargeu_current') | float(0) > 0.1 }}"
+
+      # Заблокирована — ТОЛЬКО по тексту состояния. Наличие отсчёта таймера сюда
+      # не годится: отсчёт присутствует и во время заряда (до блокировки).
+      - name: "CHARGEU locked"                 # binary_sensor.chargeu_locked
+        unique_id: chargeu_locked
+        device_class: lock
+        state: >
+          {% set s = states('sensor.chargeu_state') %}
+          {{ ('ЗАБЛОК' in s) or ('LOCKED' in s) }}
+
+      - name: "CHARGEU ground on"              # binary_sensor.chargeu_ground_on
+        unique_id: chargeu_ground_on
+        state: >
+          {% set s = states('sensor.chargeu_ground') %}
+          {{ ('ВКЛ' in s) or ('ENABLED' in s) or ('ВВІМК' in s) }}
+
+      - name: "CHARGEU RCD on"                 # binary_sensor.chargeu_rcd_on
+        unique_id: chargeu_rcd_on
+        state: >
+          {% set s = states('sensor.chargeu_rcd') %}
+          {{ ('ВКЛ' in s) or ('ENABLED' in s) or ('ВВІМК' in s) }}
+
+
+# --------------------------------------------------------------------------- #
+#  КОМАНДЫ (POST-формы, кодировка как в браузере: '$'->%24, пробел->'+')
+# --------------------------------------------------------------------------- #
+rest_command:
+  # /setup ----------------------------------------------------------------- #
+  chargeu_set_current:                 # макс. ток 6..32 А
+    url: "http://192.168.4.1/setup"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "change=%24AMPS+{{ amps }}"
+
+  chargeu_ground:                      # проверка заземления: state true->1 / false->0
+    url: "http://192.168.4.1/setup"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "change=%24GROUND+{{ 1 if state else 0 }}"
+
+  chargeu_led:                         # световая индикация: state true->1 / false->0
+    url: "http://192.168.4.1/setup"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "change=%24LED+{{ 1 if state else 0 }}"
+
+  chargeu_language:                    # язык станции: lang = E / U / R
+    url: "http://192.168.4.1/setup"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "change=%24LANG+{{ lang }}"
+
+  # /pass ------------------------------------------------------------------ #
+  # ПРОВЕРЕНО: $AVAIL 0 = разблокировать (при подключённом авто НАЧНЁТ ЗАРЯД);
+  #            $AVAIL 1 = заблокировать (ручная блокировка).
+  chargeu_unlock:
+    url: "http://192.168.4.1/pass"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "change1=%24AVAIL+0"
+
+  chargeu_lock:
+    url: "http://192.168.4.1/pass"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "change1=%24AVAIL+1"
+
+  chargeu_single_session:              # разовая сессия: state true->1 (НАЧНЁТ ЗАРЯД) / false->0
+    url: "http://192.168.4.1/pass"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "change1=%24TEMPS+{{ 1 if state else 0 }}"
+
+  chargeu_sync_clock:                  # синхронизировать часы станции с HA
+    url: "http://192.168.4.1/pass"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "newtime={{ now().strftime('%Y-%m-%dT%H:%M:%S') }}"
+
+  # Таймер: begin/end = 'ЧЧ:ММ', amps = 6..32, on = true/false.
+  # ВНИМАНИЕ: смена таймера обнуляет счётчик текущей сессии.
+  chargeu_set_timer:
+    url: "http://192.168.4.1/pass"
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: >-
+      timerb={{ begin }}&timerbc=1&timere={{ end }}&timerec=1&timeramps={{ amps }}&timer={{ 1 if on else 0 }}
+
+
+# --------------------------------------------------------------------------- #
+#  УПРАВЛЯЮЩИЕ СУЩНОСТИ
+# --------------------------------------------------------------------------- #
+
+# number: отражает реальный макс. ток и шлёт $AMPS при изменении
+number:
+  - platform: template
+    name: "CHARGEU target current"       # number.chargeu_target_current
+    unique_id: chargeu_current_control
+    min: 6
+    max: 32
+    step: 1
+    unit_of_measurement: "A"
+    state: "{{ states('sensor.chargeu_max_current') | int(10) }}"
+    set_value:
+      - service: rest_command.chargeu_set_current
+        data:
+          amps: "{{ value | int }}"
+
+switch:
+  - platform: template
+    switches:
+      # ON = станция доступна (заряд). OFF = заблокирована.
+      chargeu_available:
+        friendly_name: "CHARGEU available"
+        value_template: "{{ is_state('binary_sensor.chargeu_locked','off') }}"
+        icon_template: mdi:ev-station
+        turn_on:
+          - service: rest_command.chargeu_unlock     # начнёт заряд при подключённом авто!
+        turn_off:
+          - service: rest_command.chargeu_lock
+
+      chargeu_ground_switch:
+        friendly_name: "CHARGEU ground check"
+        value_template: "{{ is_state('binary_sensor.chargeu_ground_on','on') }}"
+        icon_template: mdi:ground
+        turn_on:
+          - service: rest_command.chargeu_ground
+            data: {state: true}
+        turn_off:
+          - service: rest_command.chargeu_ground
+            data: {state: false}
+
+# Разовые действия
+script:
+  chargeu_sync_clock:
+    alias: "CHARGEU: синхронизировать часы"
+    sequence:
+      - service: rest_command.chargeu_sync_clock
+
+  chargeu_set_timer_example:
+    alias: "CHARGEU: пример таймера 08:45-17:30 / 10A / вкл"
+    sequence:
+      - service: rest_command.chargeu_set_timer
+        data:
+          begin: "08:45"
+          end: "17:30"
+          amps: 10
+          on: true
