@@ -35,6 +35,8 @@ class ChargeuMaxCurrent(ChargeuEntity, NumberEntity):
 
     def __init__(self, coordinator: ChargeuCoordinator, entry_id: str) -> None:
         super().__init__(coordinator, entry_id, "max_current_control")
+        # Value we just wrote, shown until the device's pages report it back.
+        self._optimistic: float | None = None
 
     @property
     def native_value(self) -> float | None:
@@ -43,6 +45,17 @@ class ChargeuMaxCurrent(ChargeuEntity, NumberEntity):
         value = data.get("max_current")
         if value is None:
             value = data.get("setup_max_current")
+
+        # The command POSTs to /setup, which reports the new maximum instantly,
+        # but the "/" page mirrors it a poll or two later. Since "/" wins the
+        # merge, the freshly-set value would otherwise be masked by the stale
+        # "/" reading and the slider would bounce back for up to one poll. Show
+        # the value we set until the reported value catches up to it.
+        if self._optimistic is not None:
+            if value == self._optimistic:
+                self._optimistic = None
+            else:
+                return self._optimistic
         return value
 
     async def async_set_native_value(self, value: float) -> None:
@@ -50,4 +63,6 @@ class ChargeuMaxCurrent(ChargeuEntity, NumberEntity):
             await self.coordinator.api.async_set_current(int(value))
         except ChargeuApiError as err:
             raise HomeAssistantError(f"Failed to set charging current: {err}") from err
+        self._optimistic = value
+        self.async_write_ha_state()
         await self.coordinator.async_refresh_after_command()
