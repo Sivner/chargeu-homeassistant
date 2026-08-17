@@ -1,5 +1,10 @@
 # CHARGEU EV Charger — Home Assistant integration
 
+<p align="center">
+  <img src="docs/images/chargeu-station.jpg" alt="CHARGEU portable EV charging stations" width="640">
+</p>
+<p align="center"><sub>CHARGEU portable charging stations. Photo © <a href="https://chargeu.eu">chargeu.eu</a>.</sub></p>
+
 Local, cloud-free integration for **CHARGEU** EV charging stations
 (`chargeu.eu`, firmware ~2015–2018, e.g. *CHARGEU base 32A*).
 
@@ -32,6 +37,69 @@ charging current (6–32 A), Ground check, Light indication, Sync clock.
 
 **Services:** `chargeu.set_timer`, `chargeu.reset_energy_meter`.
 
+## Getting Home Assistant onto the charger's network
+
+This is the part that trips people up, so read it before installing.
+
+The station has **no station/client Wi-Fi mode** — it is *only* a Wi-Fi
+**access point**. It broadcasts its own SSID and serves its web interface at a
+fixed `192.168.4.1`. It cannot join your home Wi-Fi, and it knows nothing about
+any other subnet, so it has **no return route** back to a device on your LAN.
+
+That means Home Assistant can't reach it directly (HA has to stay on your home
+network). The reliable fix is a cheap intermediate router that bridges the two
+networks:
+
+```
+   CHARGEU station                Intermediate router                Home network
+   (Wi-Fi access point)           (client/WISP + NAT)                (your LAN)
+
+  ┌──────────────────┐          ┌───────────────────────┐         ┌──────────────┐
+  │                  │  Wi-Fi   │ Wi-Fi STA: 192.168.4.x │  LAN /  │ Home router  │
+  │  SSID: CHARGEU   │◄─────────┤   ▲ masquerade (NAT)   │  eth    │ 192.168.1.1  │
+  │  192.168.4.1     │  client  │   │                    ├────────►│              │
+  │  (AP only)       │          │ LAN: 192.168.1.50      │         └──────┬───────┘
+  │  192.168.4.0/24  │          └───────────────────────┘                │
+  └──────────────────┘                                            ┌──────┴───────┐
+                                                                  │ Home         │
+      static route on the home router:                            │ Assistant    │
+      192.168.4.0/24  ──►  192.168.1.50                           │ 192.168.1.10 │
+                                                                  └──────────────┘
+```
+
+**Why a plain Wi-Fi bridge/repeater is not enough:** the charger only ever
+replies to addresses it believes are on its own `192.168.4.0/24`. A packet from
+`192.168.1.10` (Home Assistant) would reach it, but the reply would be dropped —
+the charger has no gateway to send it back through. So the intermediate router
+must **NAT (masquerade)** everything leaving its client interface. From the
+charger's point of view, every request then comes from a single neighbour on its
+own subnet, and the reply goes straight back to the router, which un-NATs it and
+forwards it to Home Assistant.
+
+**Setup on the intermediate router** (any OpenWRT / GL.iNet / DD-WRT travel
+router works; it's a ~€20 box):
+
+1. Put its **Wi-Fi in client / WISP / repeater mode** and join the charger's
+   SSID. It gets (or is given a static) address on `192.168.4.0/24`.
+2. **Enable NAT/masquerade on that client (WAN) interface.** On most travel
+   routers "WISP mode" does this for you; on stock OpenWRT the `wwan` zone is
+   masqueraded by default.
+3. Connect its **LAN/Ethernet to your home network** with a static address on
+   your LAN (e.g. `192.168.1.50`). Disable its DHCP server so it doesn't fight
+   your home router.
+4. Add **one static route** on your home router so the rest of the LAN can find
+   the charger:
+   `192.168.4.0/24` → gateway `192.168.1.50` (the intermediate router).
+   *(If you can't add a route on the home router, add it on the HA host instead,
+   or route only the single host `192.168.4.1/32`.)*
+
+After that, Home Assistant reaches the charger at its normal `192.168.4.1` — the
+integration's default — and you never have to touch the address it uses.
+
+> **Tip:** verify the path before adding the integration. From a machine on your
+> LAN, `curl http://192.168.4.1/` should return the charger's HTML. If that
+> works, the config flow will too.
+
 ## Installation
 
 ### HACS (recommended)
@@ -50,8 +118,10 @@ Home Assistant, then add the integration from the UI.
 
 Only the host is required — by default `192.168.4.1`, which is the address of
 the station's own Wi-Fi access point. Home Assistant must be able to reach it
-directly. The polling interval (default 15 s) can be changed in the
-integration's options.
+over the network first — see
+[Getting Home Assistant onto the charger's network](#getting-home-assistant-onto-the-chargers-network)
+above. The polling interval (default 15 s) can be changed in the integration's
+options.
 
 ## Important behaviour notes
 
