@@ -95,16 +95,30 @@
       },
       "led": {
         "name": "Light indication"
+      },
+      "timer_enabled": {
+        "name": "Timer"
       }
     },
     "number": {
       "max_current": {
         "name": "Maximum charging current"
+      },
+      "timer_amps": {
+        "name": "Timer current"
       }
     },
     "button": {
       "sync_clock": {
         "name": "Sync clock"
+      }
+    },
+    "time": {
+      "timer_begin": {
+        "name": "Timer unlock time"
+      },
+      "timer_end": {
+        "name": "Timer lock time"
       }
     }
   },

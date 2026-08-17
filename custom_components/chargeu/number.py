@@ -19,7 +19,12 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: ChargeuCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([ChargeuMaxCurrent(coordinator, entry.entry_id)])
+    async_add_entities(
+        [
+            ChargeuMaxCurrent(coordinator, entry.entry_id),
+            ChargeuTimerAmps(coordinator, entry.entry_id),
+        ]
+    )
 
 
 class ChargeuMaxCurrent(ChargeuEntity, NumberEntity):
@@ -66,3 +71,27 @@ class ChargeuMaxCurrent(ChargeuEntity, NumberEntity):
         self._optimistic = value
         self.async_write_ha_state()
         await self.coordinator.async_refresh_after_command()
+
+
+class ChargeuTimerAmps(ChargeuEntity, NumberEntity):
+    """Charging current used inside the timer window, 6..32 A."""
+
+    _attr_translation_key = "timer_amps"
+    _attr_icon = "mdi:timer-cog-outline"
+    _attr_device_class = NumberDeviceClass.CURRENT
+    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+    _attr_native_min_value = float(MIN_AMPS)
+    _attr_native_max_value = float(MAX_AMPS)
+    _attr_native_step = 1.0
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: ChargeuCoordinator, entry_id: str) -> None:
+        super().__init__(coordinator, entry_id, "timer_amps")
+
+    @property
+    def native_value(self) -> float | None:
+        return self._value("timer_amps")
+
+    async def async_set_native_value(self, value: float) -> None:
+        # Applying the timer resets the current session counters (device quirk).
+        await self.coordinator.async_apply_timer(amps=int(value))

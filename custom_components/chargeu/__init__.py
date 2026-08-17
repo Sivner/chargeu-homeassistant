@@ -36,6 +36,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.TIME,
 ]
 
 _TIME_RE = r"^\d{1,2}:\d{2}$"

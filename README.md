@@ -35,7 +35,13 @@ rendered pages and submits the same POST forms the built-in UI submits.
 **Controls:** Station available (unlock/lock), One-shot session, Maximum
 charging current (6–32 A), Ground check, Light indication, Sync clock.
 
-**Services:** `chargeu.set_timer`, `chargeu.reset_energy_meter`.
+**Timer:** unlock time, lock time, timer current (6–32 A) and a timer on/off
+switch, editable straight from the device page. Changing any of them resets the
+current session counters (a device quirk — the lifetime meter is unaffected),
+and enabling the timer starts charging once the unlock time is reached.
+
+**Services:** `chargeu.set_timer` (set the whole timer at once, e.g. from
+automations), `chargeu.reset_energy_meter`.
 
 ## Getting Home Assistant onto the charger's network
 

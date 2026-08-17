@@ -67,10 +67,12 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: ChargeuCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
+    entities: list[SwitchEntity] = [
         ChargeuSwitch(coordinator, entry.entry_id, description)
         for description in SWITCHES
-    )
+    ]
+    entities.append(ChargeuTimerSwitch(coordinator, entry.entry_id))
+    async_add_entities(entities)
 
 
 class ChargeuSwitch(ChargeuEntity, SwitchEntity):
@@ -107,3 +109,29 @@ class ChargeuSwitch(ChargeuEntity, SwitchEntity):
         # The charger applies changes instantly; refresh now instead of waiting
         # for the next poll so the UI does not visibly bounce back.
         await self.coordinator.async_refresh_after_command()
+
+
+class ChargeuTimerSwitch(ChargeuEntity, SwitchEntity):
+    """Enable or disable the built-in timer.
+
+    Unlike the other switches this one submits the whole timer form (the device
+    accepts it only atomically), so it goes through the coordinator rather than
+    a single API call. Toggling the timer resets the current session counters,
+    and enabling it will start charging once the unlock time is reached.
+    """
+
+    _attr_translation_key = "timer_enabled"
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(self, coordinator: ChargeuCoordinator, entry_id: str) -> None:
+        super().__init__(coordinator, entry_id, "timer_enabled")
+
+    @property
+    def is_on(self) -> bool | None:
+        return self._value("timer_enabled")
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.async_apply_timer(enabled=True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.async_apply_timer(enabled=False)
