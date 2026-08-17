@@ -4,3 +4,6 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# Local helper script that regenerates icon.png; kept out of the repo.
+make_icon.py
