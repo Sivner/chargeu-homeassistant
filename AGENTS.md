@@ -115,6 +115,22 @@ markup.
    not treat "got a response" as "it's a CHARGEU". `config_flow` validates by
    checking that the status block or `<h1>` actually parsed.
 
+10. **Whole blocks disappear from `/pass` depending on the mode.** The one-shot
+    session block ("Разовая зарядная сессия", `$TEMPS`) is simply not rendered
+    while the manual availability flag is off — heading, form and token all
+    gone. It is the flag that gates it, not charging: two captures taken in the
+    same mode, one mid-session and one after the car finished, both lack the
+    block. An absent token is *unknown*, not *off*: `_state_from_offer()`
+    correctly returns `None`, and the switch reports itself unavailable rather
+    than showing a toggle that would POST a command the device never offered.
+    Fixture: `pass_timer_ru.html`.
+
+11. **`$AVAIL` on `/pass` is the manual flag, not the live state.** While the
+    timer holds the station unlocked, `/` reports `locked=False` and the car is
+    charging, yet `/pass` still offers `$AVAIL 0` ("make available") because the
+    manual availability flag never changed. Always prefer `locked` from `/` and
+    fall back to `/pass` only when it is missing — `switch.py` already does.
+
 ## Running checks
 
 ```bash
