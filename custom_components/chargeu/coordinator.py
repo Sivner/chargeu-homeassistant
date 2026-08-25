@@ -85,15 +85,28 @@ class ChargeuCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data = parse_main(main_html)
 
         if monotonic() >= self._slow_due_at:
-            try:
-                setup_html = await self.api.async_get_setup()
-                pass_html = await self.api.async_get_pass()
-            except ChargeuApiError as err:
-                # A failure on the secondary pages must not invalidate the live
-                # telemetry we already have; keep serving the previous values.
-                _LOGGER.debug("Slow-cycle refresh failed, keeping cache: %s", err)
-            else:
-                self._slow_cache = {**parse_setup(setup_html), **parse_pass(pass_html)}
+            complete = True
+            for path, fetch, parse in (
+                ("/setup", self.api.async_get_setup, parse_setup),
+                ("/pass", self.api.async_get_pass, parse_pass),
+            ):
+                try:
+                    html = await fetch()
+                except ChargeuApiError as err:
+                    # Fetch the two pages independently: sharing one try block
+                    # meant a failing /setup skipped /pass entirely, and since
+                    # both /setup-backed switches are disabled by default that
+                    # went unnoticed. A failure must cost us neither the other
+                    # page nor the live telemetry we already have.
+                    _LOGGER.debug(
+                        "Slow-cycle refresh of %s failed, keeping cache: %s", path, err
+                    )
+                    complete = False
+                else:
+                    self._slow_cache.update(parse(html))
+
+            # Retry on the next cycle unless both pages came through.
+            if complete:
                 self._slow_due_at = monotonic() + SLOW_INTERVAL
 
         # Live values from "/" win over the cached ones, but only where the live

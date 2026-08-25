@@ -157,3 +157,58 @@ def test_timer_field_not_confused_with_timerb():
     # timerbc/timerec are both value=1; if they leaked in, timer_enabled would
     # flip to False.
     assert data["timer_enabled"] is True
+
+
+def test_pass_without_one_shot_block():
+    """Timer mode inside the unlock window: the one-shot block is not rendered.
+
+    Captured live while the station was charging under the timer. The firmware
+    only renders "Разовая зарядная сессия" in some modes -- here the whole block
+    is missing, so there is no $TEMPS to invert and the state is genuinely
+    unknown. The timer fields on the same page must still parse.
+    """
+    html = load("pass_timer_ru.html")
+    assert "$TEMPS" not in html  # guards the fixture itself
+
+    data = parse_pass(html)
+
+    assert data["single_session"] is None
+
+    # Everything else on the page is unaffected by the missing block.
+    assert data["timer_enabled"] is True
+    assert data["timer_begin"] == "08:45"
+    assert data["timer_end"] == "18:30"
+    assert data["timer_amps"] == 10.0
+
+
+def test_pass_available_reflects_the_manual_flag_not_reality():
+    """`$AVAIL` on /pass is the manual availability flag, not the live state.
+
+    The same capture was taken while the station was unlocked by the timer and
+    actively charging, yet /pass still offers "$AVAIL 0" (make available)
+    because the manual flag stayed off. Consumers must prefer `locked` from "/".
+    """
+    assert parse_pass(load("pass_timer_ru.html"))["available"] is False
+
+
+def test_main_car_charged_while_unlocked():
+    """Session finished: the station is still unlocked, but current has dropped.
+
+    A state no other fixture covers -- "ЭЛЕКТРОМОБИЛЬ ЗАРЯЖЕН" with the timer
+    still holding the station open. `charging` must follow the current, not the
+    lock state, or a full battery would keep reporting as charging.
+    """
+    data = parse_main(load("main_charged_ru.html"))
+
+    assert data["state"] == "ЭЛЕКТРОМОБИЛЬ ЗАРЯЖЕН"
+    assert data["current"] == 0.0
+    assert data["charging"] is False
+    assert data["locked"] is False
+
+    # The counters keep the finished session's totals.
+    assert data["session_energy"] == 14.79
+    assert data["session_duration"] == "06:59:48"
+
+    # Timer still counts down to LOCK even though nothing is charging.
+    assert data["timer_target"] == "lock"
+    assert data["timer_countdown"] == "2:35:05"

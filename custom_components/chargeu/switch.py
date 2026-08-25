@@ -93,6 +93,16 @@ class ChargeuSwitch(ChargeuEntity, SwitchEntity):
     def is_on(self) -> bool | None:
         return self.entity_description.value_fn(self.coordinator.data or {})
 
+    @property
+    def available(self) -> bool:
+        # The firmware renders a toggle's form only in the modes where it
+        # applies -- the one-shot block is absent from /pass while the station
+        # is not manually available, so there is nothing to read and nothing to
+        # submit. Report the entity as unavailable rather than leaving a toggle
+        # sitting in an unknown state that would POST a command the device
+        # never offered.
+        return super().available and self.is_on is not None
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._async_set(True)
 
@@ -129,6 +139,12 @@ class ChargeuTimerSwitch(ChargeuEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         return self._value("timer_enabled")
+
+    @property
+    def available(self) -> bool:
+        # Same rule as the form-backed switches: no parsed state means /pass
+        # has not been read yet, and async_apply_timer would refuse anyway.
+        return super().available and self.is_on is not None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator.async_apply_timer(enabled=True)
