@@ -7,3 +7,6 @@ venv/
 
 # Local helper script that regenerates icon.png; kept out of the repo.
 make_icon.py
+
+# Personal Claude Code overrides, not team policy.
+.claude/settings.local.json
