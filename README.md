@@ -159,7 +159,8 @@ These are properties of the hardware, discovered while probing a live unit:
   completely, so the timer stops working until the clock is set again. The
   *Station clock* sensor turns on and a notice appears under **Settings →
   Repairs**; press *Sync clock* and the timer comes back with its old settings.
-  To do that automatically:
+  To do that automatically (check the entity IDs on your device page; Home
+  Assistant may prefix them with the area, e.g. `garage_chargeu_…`):
 
   ```yaml
   triggers:
