@@ -1,5 +1,10 @@
 set_timer:
   fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: chargeu
     begin:
       required: true
       example: "08:45"
@@ -26,3 +31,9 @@ set_timer:
         boolean:
 
 reset_energy_meter:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: chargeu

@@ -127,6 +127,10 @@
       "name": "Set timer",
       "description": "Configure the charger's built-in timer. Note: changing the timer resets the current session counters.",
       "fields": {
+        "device_id": {
+          "name": "Charger",
+          "description": "The CHARGEU station to configure."
+        },
         "begin": {
           "name": "Unlock time",
           "description": "When the station unlocks, HH:MM."
@@ -147,7 +151,18 @@
     },
     "reset_energy_meter": {
       "name": "Reset energy meter",
-      "description": "DESTRUCTIVE: resets the charger's lifetime energy meter. This cannot be undone."
+      "description": "DESTRUCTIVE: resets the charger's lifetime energy meter. This cannot be undone.",
+      "fields": {
+        "device_id": {
+          "name": "Charger",
+          "description": "The CHARGEU station whose meter is reset. Only this station is affected."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "device_not_found": {
+      "message": "No configured CHARGEU charger matches device {device_id}."
     }
   }
 }

@@ -41,7 +41,21 @@ current session counters (a device quirk — the lifetime meter is unaffected),
 and enabling the timer starts charging once the unlock time is reached.
 
 **Services:** `chargeu.set_timer` (set the whole timer at once, e.g. from
-automations), `chargeu.reset_energy_meter`.
+automations), `chargeu.reset_energy_meter`. Both take a required `device_id`
+and act on that one charger only:
+
+```yaml
+action: chargeu.set_timer
+data:
+  device_id: 0123456789abcdef0123456789abcdef
+  begin: "23:00"
+  end: "07:00"
+  amps: 16
+  enabled: true
+```
+
+> **Upgrading from 0.2.x:** `device_id` is new and required. Add it to any
+> automation or script that calls these services.
 
 ## Getting Home Assistant onto the charger's network
 

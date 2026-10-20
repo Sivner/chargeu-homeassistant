@@ -6,10 +6,11 @@ import logging
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, Platform
+from homeassistant.const import ATTR_DEVICE_ID, CONF_HOST, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ChargeuApi, ChargeuApiError
@@ -43,12 +44,15 @@ _TIME_RE = r"^\d{1,2}:\d{2}$"
 
 SET_TIMER_SCHEMA = vol.Schema(
     {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
         vol.Required(ATTR_BEGIN): cv.matches_regex(_TIME_RE),
         vol.Required(ATTR_END): cv.matches_regex(_TIME_RE),
         vol.Required(ATTR_AMPS): vol.All(vol.Coerce(int), vol.Range(min=MIN_AMPS, max=MAX_AMPS)),
         vol.Required(ATTR_ENABLED): cv.boolean,
     }
 )
+
+RESET_METER_SCHEMA = vol.Schema({vol.Required(ATTR_DEVICE_ID): cv.string})
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -84,8 +88,24 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-def _coordinators(hass: HomeAssistant) -> list[ChargeuCoordinator]:
-    return list(hass.data.get(DOMAIN, {}).values())
+def _coordinator_for_call(hass: HomeAssistant, call: ServiceCall) -> ChargeuCoordinator:
+    """Resolve the call's device_id to the coordinator of that one charger.
+
+    Services act on a single station only: with several chargers configured,
+    reset_energy_meter must never zero a meter the user did not pick.
+    """
+    device_id = call.data[ATTR_DEVICE_ID]
+    device = dr.async_get(hass).async_get(device_id)
+    if device is not None:
+        coordinators = hass.data.get(DOMAIN, {})
+        for entry_id in device.config_entries:
+            if (coordinator := coordinators.get(entry_id)) is not None:
+                return coordinator
+    raise ServiceValidationError(
+        translation_domain=DOMAIN,
+        translation_key="device_not_found",
+        translation_placeholders={"device_id": device_id},
+    )
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
@@ -94,25 +114,25 @@ def _async_register_services(hass: HomeAssistant) -> None:
         return
 
     async def _set_timer(call: ServiceCall) -> None:
-        for coordinator in _coordinators(hass):
-            try:
-                await coordinator.api.async_set_timer(
-                    begin=call.data[ATTR_BEGIN],
-                    end=call.data[ATTR_END],
-                    amps=call.data[ATTR_AMPS],
-                    enabled=call.data[ATTR_ENABLED],
-                )
-            except ChargeuApiError as err:
-                raise HomeAssistantError(f"Failed to set timer: {err}") from err
-            await coordinator.async_refresh_after_command()
+        coordinator = _coordinator_for_call(hass, call)
+        try:
+            await coordinator.api.async_set_timer(
+                begin=call.data[ATTR_BEGIN],
+                end=call.data[ATTR_END],
+                amps=call.data[ATTR_AMPS],
+                enabled=call.data[ATTR_ENABLED],
+            )
+        except ChargeuApiError as err:
+            raise HomeAssistantError(f"Failed to set timer: {err}") from err
+        await coordinator.async_refresh_after_command()
 
     async def _reset_meter(call: ServiceCall) -> None:
-        for coordinator in _coordinators(hass):
-            try:
-                await coordinator.api.async_reset_meter()
-            except ChargeuApiError as err:
-                raise HomeAssistantError(f"Failed to reset meter: {err}") from err
-            await coordinator.async_refresh_after_command()
+        coordinator = _coordinator_for_call(hass, call)
+        try:
+            await coordinator.api.async_reset_meter()
+        except ChargeuApiError as err:
+            raise HomeAssistantError(f"Failed to reset meter: {err}") from err
+        await coordinator.async_refresh_after_command()
 
     hass.services.async_register(DOMAIN, SERVICE_SET_TIMER, _set_timer, SET_TIMER_SCHEMA)
-    hass.services.async_register(DOMAIN, SERVICE_RESET_METER, _reset_meter)
+    hass.services.async_register(DOMAIN, SERVICE_RESET_METER, _reset_meter, RESET_METER_SCHEMA)
