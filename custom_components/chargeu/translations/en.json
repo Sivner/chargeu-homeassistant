@@ -81,6 +81,9 @@
       },
       "rcd": {
         "name": "Shock protection"
+      },
+      "clock_problem": {
+        "name": "Station clock"
       }
     },
     "switch": {
@@ -163,6 +166,12 @@
   "exceptions": {
     "device_not_found": {
       "message": "No configured CHARGEU charger matches device {device_id}."
+    }
+  },
+  "issues": {
+    "clock_not_set": {
+      "title": "{title}: station clock is not set",
+      "description": "The charger lost its clock, most likely after a power cut (it has no NTP and no clock battery). While the clock is unset the station hides its timer, so the timer does not run and its entities are unavailable.\n\nPress **Sync clock** on the device page. The stored timer settings come back as they were, and this notice disappears within a few seconds."
     }
   }
 }

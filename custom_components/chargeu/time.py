@@ -72,6 +72,12 @@ class ChargeuTime(ChargeuEntity, TimeEntity):
         except ValueError:
             return None
 
+    @property
+    def available(self) -> bool:
+        # The timer form is missing from /pass while the station clock is
+        # unset; with nothing to read there is nothing to preserve on submit.
+        return super().available and self.native_value is not None
+
     async def async_set_value(self, value: time) -> None:
         # Changing the timer resets the current session counters; that is a
         # device behaviour, not something we can avoid here.

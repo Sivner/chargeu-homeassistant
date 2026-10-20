@@ -154,9 +154,23 @@ These are properties of the hardware, discovered while probing a live unit:
 - **`reset_energy_meter` is irreversible.** It zeroes the station's lifetime
   meter; there is no undo. It is exposed as a service rather than a button on
   purpose.
-- The station has **no NTP**; its clock drifts and the timer depends on it. The
-  *Sync clock* button pushes Home Assistant's time to the station — worth
-  automating occasionally.
+- The station has **no NTP and no clock battery**; its clock drifts, and after
+  a power cut it is not set at all. Without a clock the station hides its timer
+  completely, so the timer stops working until the clock is set again. The
+  *Station clock* sensor turns on and a notice appears under **Settings →
+  Repairs**; press *Sync clock* and the timer comes back with its old settings.
+  To do that automatically:
+
+  ```yaml
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.chargeu_station_clock
+      to: "on"
+  actions:
+    - action: button.press
+      target:
+        entity_id: button.chargeu_sync_clock
+  ```
 
 ## How it works
 

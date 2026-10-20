@@ -7,10 +7,11 @@ import logging
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_DEVICE_ID, CONF_HOST, Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ChargeuApi, ChargeuApiError
@@ -68,6 +69,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 
+    @callback
+    def _async_check_clock() -> None:
+        # After a power loss the station clock is unset and the firmware hides
+        # the timer form, so the timer silently stops working. Surface it as a
+        # repair; it clears itself once "Sync clock" has been pressed.
+        if (coordinator.data or {}).get("clock_set") is False:
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                _clock_issue_id(entry),
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="clock_not_set",
+                translation_placeholders={"title": entry.title},
+            )
+        else:
+            ir.async_delete_issue(hass, DOMAIN, _clock_issue_id(entry))
+
+    entry.async_on_unload(coordinator.async_add_listener(_async_check_clock))
+    _async_check_clock()
+
     _async_register_services(hass)
     return True
 
@@ -84,8 +106,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unloaded
 
 
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Drop the entry's repair issue along with the entry."""
+    ir.async_delete_issue(hass, DOMAIN, _clock_issue_id(entry))
+
+
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+def _clock_issue_id(entry: ConfigEntry) -> str:
+    return f"clock_not_set_{entry.entry_id}"
 
 
 def _coordinator_for_call(hass: HomeAssistant, call: ServiceCall) -> ChargeuCoordinator:

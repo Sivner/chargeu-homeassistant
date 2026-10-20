@@ -12,6 +12,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -54,6 +55,16 @@ BINARY_SENSORS: tuple[ChargeuBinaryDescription, ...] = (
         translation_key="rcd",
         icon="mdi:shield-flash",
         value_fn=lambda d: d.get("rcd_on"),
+    ),
+    ChargeuBinaryDescription(
+        key="clock_problem",
+        translation_key="clock_problem",
+        icon="mdi:clock-alert-outline",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # On after a power loss: the clock is unset and the firmware hides the
+        # whole timer form until "Sync clock" is pressed.
+        value_fn=lambda d: None if d.get("clock_set") is None else not d["clock_set"],
     ),
 )
 

@@ -92,6 +92,12 @@ class ChargeuTimerAmps(ChargeuEntity, NumberEntity):
     def native_value(self) -> float | None:
         return self._value("timer_amps")
 
+    @property
+    def available(self) -> bool:
+        # The timer form is missing from /pass while the station clock is
+        # unset; with nothing to read there is nothing to preserve on submit.
+        return super().available and self.native_value is not None
+
     async def async_set_native_value(self, value: float) -> None:
         # Applying the timer resets the current session counters (device quirk).
         await self.coordinator.async_apply_timer(amps=int(value))

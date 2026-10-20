@@ -212,3 +212,85 @@ def test_main_car_charged_while_unlocked():
     # Timer still counts down to LOCK even though nothing is charging.
     assert data["timer_target"] == "lock"
     assert data["timer_countdown"] == "2:35:05"
+
+
+# --------------------------------------------------------------------------- #
+#  /pass: station clock
+# --------------------------------------------------------------------------- #
+
+
+def test_pass_clock_not_set_hides_the_timer_form():
+    """After a power loss the clock reads "НЕ УСТАНОВЛЕНО" and the timer form goes.
+
+    Captured live after the station had lost its clock (no NTP, no RTC battery).
+    Only a bare "Таймер: ВЫКЛЮЧЕН" line is left -- no timerb / timere / amps
+    select / toggle -- so every timer field is unknown, not merely "off".
+    """
+    html = load("pass_noclock_ru.html")
+    assert "НЕ УСТАНОВЛЕНО" in html and "name=timerb" not in html  # guards the fixture
+
+    data = parse_pass(html)
+
+    assert data["clock_set"] is False
+    assert data["timer_enabled"] is None
+    assert data["timer_begin"] is None
+    assert data["timer_end"] is None
+    assert data["timer_amps"] is None
+    # The rest of the page is unaffected.
+    assert data["available"] is False
+    assert data["single_session"] is False
+
+
+def test_pass_timer_form_returns_after_clock_sync():
+    """The same station seconds after "Sync clock": the timer form is back.
+
+    The firmware kept the stored timer values through the power loss; it only
+    hid them while the clock was unset.
+    """
+    data = parse_pass(load("pass_locked_ru.html"))
+
+    assert data["clock_set"] is True
+    assert data["timer_enabled"] is False
+    assert data["timer_begin"] == "08:45"
+    assert data["timer_end"] == "18:30"
+    assert data["timer_amps"] == 10.0
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    # pass_ru renders the time itself, the other two an empty sttime placeholder.
+    ["pass_ru.html", "pass_timer_ru.html", "pass_locked_ru.html"],
+)
+def test_pass_clock_set(fixture: str):
+    assert parse_pass(load(fixture))["clock_set"] is True
+
+
+def test_pass_clock_unknown_without_clock_block():
+    assert parse_pass("<html><body>Not found: /pass</body></html>")["clock_set"] is None
+
+
+def test_one_shot_block_hidden_only_while_the_timer_is_in_control():
+    """The one-shot block is missing only with timer ON and manual flag OFF.
+
+    pass_ru.html          flag on,  timer on  -> block present
+    pass_timer_ru.html    flag off, timer on  -> block absent
+    pass_locked_ru.html   flag off, timer off -> block present (this capture)
+
+    Neither condition hides it alone: it goes while the timer is the thing
+    holding the station.
+    """
+    data = parse_pass(load("pass_locked_ru.html"))
+
+    assert data["available"] is False  # offers "$AVAIL 0": manual flag is off
+    assert data["timer_enabled"] is False
+    assert data["single_session"] is False  # block present, offers "$TEMPS 1"
+
+    on_flag_on_timer = parse_pass(load("pass_ru.html"))
+    assert on_flag_on_timer["available"] is True
+    assert on_flag_on_timer["timer_enabled"] is True
+    assert on_flag_on_timer["single_session"] is False
+
+    off_flag_on_timer = parse_pass(load("pass_timer_ru.html"))
+    assert off_flag_on_timer["available"] is False
+    assert off_flag_on_timer["timer_enabled"] is True
+    assert off_flag_on_timer["single_session"] is None

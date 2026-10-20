@@ -109,7 +109,17 @@ markup.
    while charging. Both label variants must be recognised — an early version
    only handled "will unlock" and silently lost the countdown during charging.
 
-8. **The station has no NTP.** Its clock drifts and the timer depends on it.
+8. **The station has no NTP and no clock battery.** Its clock drifts, and a
+   power loss wipes it: `/pass` then shows "Дата/время станции: НЕ УСТАНОВЛЕНО"
+   and the firmware **drops the whole timer form** — no `timerb` / `timere` /
+   amps select / toggle, just a bare "Таймер: ВЫКЛЮЧЕН". The timer silently stops
+   working and every timer field is unknown, not "off". The stored values
+   survive: after "Sync clock" (`newtime`) the form returns exactly as it was.
+   `parse_pass()` reports this as `clock_set` (judged from the time or the
+   `sttime` placeholder in the clock block, never from the translated word);
+   it drives the "Station clock" problem sensor and a repair issue.
+   Fixtures: `pass_noclock_ru.html`, then `pass_locked_ru.html` right after the
+   sync.
 
 9. **Unknown paths return `Not found: /...` with HTTP 200-ish behaviour.** Do
    not treat "got a response" as "it's a CHARGEU". `config_flow` validates by
@@ -117,13 +127,15 @@ markup.
 
 10. **Whole blocks disappear from `/pass` depending on the mode.** The one-shot
     session block ("Разовая зарядная сессия", `$TEMPS`) is simply not rendered
-    while the manual availability flag is off — heading, form and token all
-    gone. It is the flag that gates it, not charging: two captures taken in the
-    same mode, one mid-session and one after the car finished, both lack the
-    block. An absent token is *unknown*, not *off*: `_state_from_offer()`
+    while the timer is in control — timer on *and* manual availability flag off
+    — heading, form and token all gone. Neither condition hides it alone (flag
+    on + timer on, and flag off + timer off, both render it), and charging has
+    nothing to do with it: two timer-mode captures, one mid-session and one
+    after the car finished, both lack the block. An absent token is *unknown*, not *off*: `_state_from_offer()`
     correctly returns `None`, and the switch reports itself unavailable rather
     than showing a toggle that would POST a command the device never offered.
-    Fixture: `pass_timer_ru.html`.
+    Fixtures: `pass_timer_ru.html` (absent), `pass_ru.html` and
+    `pass_locked_ru.html` (present).
 
 11. **`$AVAIL` on `/pass` is the manual flag, not the live state.** While the
     timer holds the station unlocked, `/` reports `locked=False` and the car is

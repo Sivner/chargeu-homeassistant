@@ -226,8 +226,25 @@ def parse_setup(html: str) -> dict[str, Any]:
     }
 
 
+def _clock_set(html: str) -> bool | None:
+    """Whether the station's clock is set, judged from the /pass clock block.
+
+    The block is the ``.ins`` holding the ``name=newtime`` form. A set clock
+    renders either the time itself (``15/08/2026 13:13:40``) or an empty
+    ``<span id='sttime'>`` placeholder; after a power loss it renders only a
+    translated "not set" word ("НЕ УСТАНОВЛЕНО") and the firmware drops the whole
+    timer form from the page. Checking for the time / placeholder rather than
+    the word keeps this language-independent. None when there is no clock block.
+    """
+    # (?:(?!<div).)*? keeps the match inside the innermost div before the form.
+    block = _search(html, r"<div[^>]*>((?:(?!<div).)*?)<form[^>]*>\s*<input[^>]*name=newtime")
+    if block is None:
+        return None
+    return "sttime" in block or re.search(r"\d{1,2}/\d{1,2}/\d{4}", block) is not None
+
+
 def parse_pass(html: str) -> dict[str, Any]:
-    """Parse ``/pass``: availability, one-shot session and timer settings."""
+    """Parse ``/pass``: availability, one-shot session, clock and timer settings."""
     # Real markup: ``<input name=timer value=0 type=hidden>``. The trailing \s is
     # essential -- without it this would also match name=timerb / timerbc /
     # timere / timerec, which are different fields.
@@ -247,6 +264,7 @@ def parse_pass(html: str) -> dict[str, Any]:
         # $AVAIL 0 offered => currently locked; $AVAIL 1 offered => available.
         "available": _available_from_offer(html),
         "single_session": _state_from_offer(html, "TEMPS"),
+        "clock_set": _clock_set(html),
         "timer_enabled": timer_enabled,
         "timer_begin": _search(html, r"name=timerb\s+type=time\s+value='([\d:]+)'"),
         "timer_end": _search(html, r"name=timere\s+type=time\s+value='([\d:]+)'"),
